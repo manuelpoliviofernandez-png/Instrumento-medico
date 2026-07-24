@@ -1,0 +1,18 @@
+SURGIVISION AI - DISEÑO GRADIO AZUL PARA RENDER
+
+1. Coloca tu archivo best.pt en esta misma carpeta.
+2. En GitHub, reemplaza el app.py anterior por este app.py.
+3. Conserva requirements.txt y .python-version.
+4. La carpeta del repositorio debe contener:
+   - app.py
+   - best.pt
+   - requirements.txt
+   - .python-version
+5. Haz Commit changes.
+6. Render debería desplegar el cambio automáticamente. Si no lo hace:
+   Events > Manual Deploy > Deploy latest commit.
+7. Si sigue apareciendo el diseño anterior:
+   Events > Manual Deploy > Clear build cache & deploy.
+
+Build Command: pip install -r requirements.txt
+Start Command: python app.py

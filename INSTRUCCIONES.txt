@@ -1,18 +1,52 @@
-SURGIVISION AI - DISEÑO GRADIO AZUL PARA RENDER
+SURGIVISION AI – ARCHIVOS PARA RENDER
 
-1. Coloca tu archivo best.pt en esta misma carpeta.
-2. En GitHub, reemplaza el app.py anterior por este app.py.
-3. Conserva requirements.txt y .python-version.
-4. La carpeta del repositorio debe contener:
+IMPORTANTE:
+No necesitas volver a entrenar el modelo.
+
+Debes conservar y utilizar el mismo archivo:
+best.pt
+
+ARCHIVOS QUE DEBEN ESTAR EN GITHUB:
+1. app.py
+2. best.pt
+3. requirements.txt
+4. .python-version
+5. INSTRUCCIONES.txt
+
+PASOS PARA ACTUALIZAR GITHUB:
+1. Entra al repositorio Instrumento-medico.
+2. Selecciona Add file / Añadir archivo.
+3. Selecciona Upload files / Subir archivos.
+4. Sube los cuatro archivos nuevos de esta carpeta:
    - app.py
-   - best.pt
    - requirements.txt
    - .python-version
-5. Haz Commit changes.
-6. Render debería desplegar el cambio automáticamente. Si no lo hace:
-   Events > Manual Deploy > Deploy latest commit.
-7. Si sigue apareciendo el diseño anterior:
-   Events > Manual Deploy > Clear build cache & deploy.
+   - INSTRUCCIONES.txt
+5. NO elimines ni reemplaces best.pt.
+6. Confirma que el repositorio muestre exactamente:
+   - .python-version
+   - app.py
+   - best.pt
+   - INSTRUCCIONES.txt
+   - requirements.txt
+7. Presiona Commit changes.
 
-Build Command: pip install -r requirements.txt
-Start Command: python app.py
+RENDER:
+Render debería iniciar automáticamente un nuevo despliegue.
+Si no lo hace:
+Manual Deploy > Deploy latest commit
+
+CONFIGURACIÓN:
+Build Command:
+pip install -r requirements.txt
+
+Start Command:
+python app.py
+
+CAMBIOS DE ESTA VERSIÓN:
+- Interfaz dirigida a enfermería, internos y médicos.
+- Menos términos técnicos visibles.
+- Sin controles de IoU, TTA o resolución para el usuario.
+- Tabla simplificada.
+- Mensajes prácticos para cargar y revisar fotografías.
+- Mantiene el mismo best.pt y no requiere reentrenamiento.

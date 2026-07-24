@@ -13,7 +13,7 @@ from ultralytics import YOLO
 
 
 # ==========================================================
-# CONFIGURACIÓN GENERAL Y CARGA DEL MODELO
+# CARGA DEL MODELO
 # ==========================================================
 
 DIRECTORIO_BASE = Path(__file__).resolve().parent
@@ -21,31 +21,31 @@ RUTA_MODELO = DIRECTORIO_BASE / "best.pt"
 
 if not RUTA_MODELO.is_file():
     raise FileNotFoundError(
-        f"No se encontró el modelo YOLO en: {RUTA_MODELO}. "
-        "Sube el archivo best.pt en la misma carpeta que app.py."
+        f"No se encontró el archivo {RUTA_MODELO.name}. "
+        "Sube best.pt en la misma carpeta que app.py."
     )
 
-# El modelo se carga una sola vez al iniciar la aplicación.
 modelo = YOLO(str(RUTA_MODELO))
 
 if modelo.task != "detect":
     raise ValueError(
-        f"El modelo cargado es de tipo '{modelo.task}', no de detección."
+        f"El archivo cargado corresponde a una tarea '{modelo.task}', "
+        "pero la aplicación necesita un modelo de detección."
     )
 
 print(f"Modelo cargado correctamente: {RUTA_MODELO.name}")
-print(f"Tipo de tarea: {modelo.task}")
-print(f"Clases: {modelo.names}")
+print(f"Clases disponibles: {modelo.names}")
 print(f"GPU disponible: {torch.cuda.is_available()}")
 
+
+# Valores internos recomendados para mantener la interfaz sencilla.
+CONFIANZA_MINIMA = 0.25
+UMBRAL_IOU = 0.35
+RESOLUCION = 960
 COLUMNAS = [
     "N.º",
-    "Instrumento",
-    "Confianza",
-    "x1",
-    "y1",
-    "x2",
-    "y2"
+    "Instrumento identificado",
+    "Nivel de reconocimiento"
 ]
 
 
@@ -64,193 +64,91 @@ def tabla_vacia():
 def estado_inicial():
     return """
     <div class="empty-result">
-
-        <div class="empty-icon">
-            SV
-        </div>
-
+        <div class="empty-icon">SV</div>
         <div>
-            <div class="empty-title">
-                Esperando análisis
-            </div>
-
+            <div class="empty-title">Listo para comenzar</div>
             <div class="empty-description">
-                Carga una imagen y presiona
-                <b>Analizar imagen</b>.
+                Cargue o tome una fotografía y presione
+                <b>Identificar instrumentos</b>.
             </div>
         </div>
-
     </div>
     """
 
 
-def resumen_sin_detecciones(confianza):
-    return f"""
+def resumen_sin_detecciones():
+    return """
     <div class="result-card result-empty">
-
         <div class="result-title">
-            Instrumentos reconocidos
+            No fue posible identificar instrumentos
         </div>
-
         <div class="result-description">
-            No se encontraron detecciones con una confianza
-            mínima de {float(confianza) * 100:.0f}%.
+            Tome una nueva fotografía con mayor iluminación,
+            acerque los instrumentos a la cámara y evite que estén
+            demasiado superpuestos.
         </div>
-
         <div class="tag-container">
-            <span class="tag tag-empty">
-                Sin detecciones
-            </span>
+            <span class="tag tag-empty">Sin instrumentos identificados</span>
         </div>
-
     </div>
 
     <div class="metrics-grid">
-
         <div class="metric-card">
-
-            <div class="metric-label">
-                INSTRUMENTOS<br>DETECTADOS
-            </div>
-
-            <div class="metric-value">
-                0
-            </div>
-
-            <div class="metric-detail">
-                Ninguna caja aceptada
-            </div>
-
+            <div class="metric-label">CANTIDAD IDENTIFICADA</div>
+            <div class="metric-value">0</div>
+            <div class="metric-detail">Revise la fotografía e inténtelo nuevamente</div>
         </div>
 
         <div class="metric-card">
-
-            <div class="metric-label">
-                MAYOR<br>PROBABILIDAD
-            </div>
-
-            <div class="metric-value">
-                —
-            </div>
-
-            <div class="metric-detail">
-                Sin resultados
-            </div>
-
+            <div class="metric-label">RESULTADO DEL ANÁLISIS</div>
+            <div class="metric-value status-small">Sin identificación</div>
+            <div class="metric-detail">No se encontraron coincidencias suficientes</div>
         </div>
-
-        <div class="metric-card">
-
-            <div class="metric-label">
-                ESTADO
-            </div>
-
-            <div class="metric-value status-small">
-                No detectado
-            </div>
-
-            <div class="metric-detail">
-                Ajusta la imagen o el umbral
-            </div>
-
-        </div>
-
     </div>
     """
 
 
 def crear_resumen(detecciones, conteo):
     total = len(detecciones)
-
-    if total == 0:
-        return resumen_sin_detecciones(0)
-
-    mejor = max(
-        detecciones,
-        key=lambda elemento: elemento["confianza_valor"]
-    )
+    mejor = max(detecciones, key=lambda elemento: elemento["confianza_valor"])
 
     etiquetas = "".join(
-        f"""
-        <span class="tag">
-            {cantidad} × {escapar(nombre)}
-        </span>
-        """
+        f'<span class="tag">{cantidad} × {escapar(nombre)}</span>'
         for nombre, cantidad in conteo.items()
     )
 
-    if total == 1:
-        texto_total = "Se detectó 1 instrumento."
-    else:
-        texto_total = f"Se detectaron {total} instrumentos."
+    texto_total = (
+        "Se identificó 1 instrumento."
+        if total == 1
+        else f"Se identificaron {total} instrumentos."
+    )
 
     return f"""
     <div class="result-card">
-
-        <div class="result-title">
-            Instrumentos reconocidos
-        </div>
-
+        <div class="result-title">Instrumentos identificados</div>
         <div class="result-description">
-            {texto_total}
+            {texto_total} Revise la imagen marcada y confirme que
+            el nombre y la cantidad coincidan con el instrumental observado.
         </div>
-
-        <div class="tag-container">
-            {etiquetas}
-        </div>
-
+        <div class="tag-container">{etiquetas}</div>
     </div>
 
     <div class="metrics-grid">
-
         <div class="metric-card">
-
-            <div class="metric-label">
-                INSTRUMENTOS<br>DETECTADOS
-            </div>
-
-            <div class="metric-value">
-                {total}
-            </div>
-
+            <div class="metric-label">CANTIDAD IDENTIFICADA</div>
+            <div class="metric-value">{total}</div>
             <div class="metric-detail">
-                {len(conteo)} clase(s) diferente(s)
+                {len(conteo)} tipo(s) de instrumento
             </div>
-
         </div>
 
         <div class="metric-card">
-
-            <div class="metric-label">
-                MAYOR<br>PROBABILIDAD
-            </div>
-
-            <div class="metric-value">
-                {mejor["confianza_valor"] * 100:.1f}%
-            </div>
-
+            <div class="metric-label">RECONOCIMIENTO MÁS SEGURO</div>
+            <div class="metric-value">{mejor["confianza_valor"] * 100:.1f}%</div>
             <div class="metric-detail">
-                {escapar(mejor["Instrumento"])}
+                {escapar(mejor["Instrumento identificado"])}
             </div>
-
         </div>
-
-        <div class="metric-card">
-
-            <div class="metric-label">
-                ESTADO
-            </div>
-
-            <div class="metric-value status-small">
-                Detectado
-            </div>
-
-            <div class="metric-detail">
-                Resultado positivo
-            </div>
-
-        </div>
-
     </div>
     """
 
@@ -261,66 +159,43 @@ def normalizar_imagen(imagen):
 
     if isinstance(imagen, Image.Image):
         imagen_pil = imagen
-
     else:
         arreglo = np.asarray(imagen)
 
         if arreglo.ndim == 2:
-            arreglo = cv2.cvtColor(
-                arreglo,
-                cv2.COLOR_GRAY2RGB
-            )
-
+            arreglo = cv2.cvtColor(arreglo, cv2.COLOR_GRAY2RGB)
         elif arreglo.shape[-1] == 4:
-            arreglo = cv2.cvtColor(
-                arreglo,
-                cv2.COLOR_RGBA2RGB
-            )
+            arreglo = cv2.cvtColor(arreglo, cv2.COLOR_RGBA2RGB)
 
-        imagen_pil = Image.fromarray(
-            arreglo.astype(np.uint8)
-        )
+        imagen_pil = Image.fromarray(arreglo.astype(np.uint8))
 
-    imagen_pil = ImageOps.exif_transpose(
-        imagen_pil
-    ).convert("RGB")
-
-    return imagen_pil
+    return ImageOps.exif_transpose(imagen_pil).convert("RGB")
 
 
 # ==========================================================
-# FUNCIÓN PRINCIPAL DE PREDICCIÓN
+# IDENTIFICACIÓN DE INSTRUMENTOS
 # ==========================================================
 
-def analizar_imagen(
-    imagen,
-    confianza_minima,
-    umbral_iou,
-    resolucion
-):
+def analizar_imagen(imagen):
     if imagen is None:
         return (
             None,
             estado_inicial(),
             tabla_vacia(),
-            "Primero debes cargar una imagen."
+            "Primero debe cargar o tomar una fotografía."
         )
 
     try:
         imagen_pil = normalizar_imagen(imagen)
         imagen_rgb = np.asarray(imagen_pil)
-
         dispositivo = 0 if torch.cuda.is_available() else "cpu"
 
         resultados = modelo.predict(
             source=imagen_rgb,
-            conf=float(confianza_minima),
-            iou=float(umbral_iou),
-            imgsz=int(resolucion),
-
-            # Desactivado para evitar cajas duplicadas
+            conf=CONFIANZA_MINIMA,
+            iou=UMBRAL_IOU,
+            imgsz=RESOLUCION,
             augment=False,
-
             max_det=50,
             agnostic_nms=False,
             device=dispositivo,
@@ -334,78 +209,35 @@ def analizar_imagen(
             conf=True,
             line_width=2
         )
-
         imagen_anotada_rgb = cv2.cvtColor(
             imagen_anotada_bgr,
             cv2.COLOR_BGR2RGB
         )
-
-        imagen_salida = Image.fromarray(
-            imagen_anotada_rgb
-        )
+        imagen_salida = Image.fromarray(imagen_anotada_rgb)
 
         detecciones = []
         conteo = Counter()
 
-        if (
-            resultado.boxes is not None
-            and len(resultado.boxes) > 0
-        ):
-            clases = (
-                resultado.boxes.cls
-                .cpu()
-                .numpy()
-                .astype(int)
-            )
+        if resultado.boxes is not None and len(resultado.boxes) > 0:
+            clases = resultado.boxes.cls.cpu().numpy().astype(int)
+            confianzas = resultado.boxes.conf.cpu().numpy()
 
-            confianzas = (
-                resultado.boxes.conf
-                .cpu()
-                .numpy()
-            )
-
-            coordenadas = (
-                resultado.boxes.xyxy
-                .cpu()
-                .numpy()
-            )
-
-            for numero, (
-                clase_id,
-                confianza,
-                caja
-            ) in enumerate(
-                zip(
-                    clases,
-                    confianzas,
-                    coordenadas
-                ),
+            for numero, (clase_id, confianza) in enumerate(
+                zip(clases, confianzas),
                 start=1
             ):
                 nombre = modelo.names[int(clase_id)]
-
-                x1, y1, x2, y2 = caja
-
                 conteo[nombre] += 1
 
                 detecciones.append({
                     "N.º": numero,
-                    "Instrumento": nombre,
-                    "Confianza": (
-                        f"{confianza * 100:.1f}%"
-                    ),
-                    "x1": round(float(x1)),
-                    "y1": round(float(y1)),
-                    "x2": round(float(x2)),
-                    "y2": round(float(y2)),
+                    "Instrumento identificado": nombre,
+                    "Nivel de reconocimiento": f"{confianza * 100:.1f}%",
                     "confianza_valor": float(confianza)
                 })
 
         if detecciones:
-            resumen = crear_resumen(
-                detecciones,
-                conteo
-            )
+            resumen = crear_resumen(detecciones, conteo)
 
             tabla = pd.DataFrame([
                 {
@@ -415,53 +247,31 @@ def analizar_imagen(
                 for deteccion in detecciones
             ])
 
-            desglose = "; ".join(
-                f"{cantidad} × {nombre}"
-                for nombre, cantidad in conteo.items()
+            detalle = (
+                "Análisis completado. Confirme visualmente los nombres y "
+                "cantidades antes de registrar, organizar o preparar el instrumental."
             )
-
-            informacion = (
-                f"Confianza mínima: "
-                f"{float(confianza_minima):.2f}. "
-                f"IoU: {float(umbral_iou):.2f}. "
-                f"Resolución: {int(resolucion)} píxeles. "
-                f"TTA desactivado. "
-                f"Conteo obtenido: {desglose}."
-            )
-
         else:
-            resumen = resumen_sin_detecciones(
-                confianza_minima
-            )
-
+            resumen = resumen_sin_detecciones()
             tabla = tabla_vacia()
-
-            informacion = (
-                "El modelo no produjo cajas que superaran "
-                f"la confianza mínima de "
-                f"{float(confianza_minima):.2f}. "
-                "Prueba con 0.10 o 0.15, una imagen más "
-                "cercana o una resolución de 960."
+            detalle = (
+                "No se identificaron instrumentos. Pruebe con una fotografía "
+                "más cercana, bien iluminada y con menos superposición."
             )
 
-        return (
-            imagen_salida,
-            resumen,
-            tabla,
-            informacion
-        )
+        return imagen_salida, resumen, tabla, detalle
 
     except Exception as error:
         return (
             imagen,
             f"""
             <div class="error-box">
-                <b>Error durante la predicción:</b><br>
+                <b>No fue posible completar el análisis.</b><br>
                 {escapar(error)}
             </div>
             """,
             tabla_vacia(),
-            "No fue posible completar el análisis."
+            "Revise la imagen e inténtelo nuevamente."
         )
 
 
@@ -476,7 +286,7 @@ def limpiar():
 
 
 # ==========================================================
-# CSS
+# ESTILO VISUAL
 # ==========================================================
 
 CSS = """
@@ -504,15 +314,9 @@ body {
 }
 
 .surgi-header {
-    background: linear-gradient(
-        110deg,
-        #0a294a 0%,
-        #176783 57%,
-        #118878 100%
-    );
-
+    background: linear-gradient(110deg, #0a294a 0%, #176783 57%, #118878 100%);
     border-radius: 17px;
-    padding: 22px 25px;
+    padding: 24px 26px;
     color: white;
     margin-bottom: 16px;
     box-shadow: 0 7px 0 rgba(21, 71, 96, 0.07);
@@ -525,40 +329,36 @@ body {
 }
 
 .logo {
-    width: 47px;
-    height: 47px;
+    width: 48px;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
-
     border-radius: 13px;
     border: 1px solid rgba(255,255,255,.25);
     background: rgba(255,255,255,.12);
-
     font-weight: 900;
 }
 
 .header-title {
-    font-size: 27px;
+    font-size: 28px;
     font-weight: 900;
 }
 
 .header-subtitle {
-    margin-top: 4px;
-    font-size: 13px;
-    color: rgba(255,255,255,.9);
+    margin-top: 5px;
+    font-size: 14px;
+    color: rgba(255,255,255,.92);
 }
 
-.badge {
+.audience {
     display: inline-block;
     margin-top: 15px;
-    padding: 5px 10px;
-
+    padding: 6px 11px;
     border: 1px solid rgba(255,255,255,.28);
     border-radius: 9px;
     background: rgba(255,255,255,.1);
-
-    font-size: 10px;
+    font-size: 11px;
 }
 
 .panel {
@@ -566,7 +366,7 @@ body {
     border: 1px solid var(--borde);
     border-radius: 15px;
     padding: 18px;
-    min-height: 710px;
+    min-height: 690px;
 }
 
 .step {
@@ -586,6 +386,7 @@ body {
     margin: 5px 0 17px;
     color: var(--secundario);
     font-size: 12px;
+    line-height: 1.5;
 }
 
 .result-card {
@@ -611,6 +412,7 @@ body {
     color: #355266;
     font-size: 12px;
     margin-top: 5px;
+    line-height: 1.5;
 }
 
 .tag-container {
@@ -624,10 +426,8 @@ body {
     border: 1px solid #28ce91;
     background: white;
     color: #08755f;
-
     padding: 5px 10px;
     border-radius: 999px;
-
     font-size: 11px;
     font-weight: 800;
 }
@@ -639,7 +439,7 @@ body {
 
 .metrics-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 11px;
     margin-bottom: 18px;
 }
@@ -672,7 +472,7 @@ body {
 .metric-detail {
     margin-top: 3px;
     color: #668196;
-    font-size: 9px;
+    font-size: 10px;
 }
 
 .empty-result {
@@ -680,7 +480,6 @@ body {
     border-radius: 13px;
     padding: 20px;
     background: #f7fafc;
-
     display: flex;
     align-items: center;
     gap: 12px;
@@ -689,14 +488,11 @@ body {
 .empty-icon {
     width: 38px;
     height: 38px;
-
     border-radius: 10px;
     background: #dfeaf0;
-
     display: flex;
     align-items: center;
     justify-content: center;
-
     color: #37647d;
     font-weight: 900;
 }
@@ -714,35 +510,31 @@ body {
 
 .recommendation {
     margin-top: 12px;
-
     border: 1px solid var(--borde);
     border-radius: 12px;
     background: #f7fafc;
-
     padding: 13px;
     color: #4c687a;
     font-size: 11px;
+    line-height: 1.55;
 }
 
 .warning {
     margin-top: 16px;
-
     border: 1px solid #efb771;
     border-radius: 12px;
     background: #fff8ef;
-
     padding: 14px;
-    color: #9d511c;
+    color: #8a4a1b;
     font-size: 11px;
+    line-height: 1.5;
 }
 
 .error-box {
     padding: 16px;
-
     border: 1px solid #e3a2a2;
     border-radius: 12px;
     background: #fff1f1;
-
     color: #9b3030;
 }
 
@@ -777,258 +569,154 @@ body {
 
 
 # ==========================================================
-# INTERFAZ COMPLETA
+# INTERFAZ
 # ==========================================================
 
-with gr.Blocks(
-    title="SurgiVision AI",
-    css=CSS
-) as pagina:
+with gr.Blocks(title="SurgiVision AI", css=CSS) as pagina:
 
     gr.HTML(
         """
         <div class="surgi-header">
-
             <div class="header-row">
-
-                <div class="logo">
-                    SV
-                </div>
-
+                <div class="logo">SV</div>
                 <div>
-                    <div class="header-title">
-                        SurgiVision AI
-                    </div>
-
+                    <div class="header-title">SurgiVision AI</div>
                     <div class="header-subtitle">
-                        Detección y conteo inteligente de
-                        instrumentos quirúrgicos
+                        Identificación y conteo de instrumentos quirúrgicos mediante imágenes
                     </div>
                 </div>
-
             </div>
 
-            <div class="badge">
-                PROTOTIPO ACADÉMICO · DETECCIÓN DE OBJETOS YOLO
+            <div class="audience">
+                Herramienta de apoyo para enfermería, internos y médicos
             </div>
-
         </div>
         """
     )
 
     with gr.Row(equal_height=True):
 
-        # ==================================================
-        # COLUMNA IZQUIERDA
-        # ==================================================
-
-        with gr.Column(
-            scale=5,
-            elem_classes=["panel"]
-        ):
-
+        with gr.Column(scale=5, elem_classes=["panel"]):
             gr.HTML(
                 """
-                <div class="step">
-                    PASO 1
-                </div>
-
-                <div class="section-title">
-                    Cargar imagen
-                </div>
-
+                <div class="step">PASO 1</div>
+                <div class="section-title">Cargar o tomar una fotografía</div>
                 <div class="section-description">
-                    Utiliza una fotografía clara, centrada
-                    y con iluminación uniforme.
+                    Utilice una imagen en la que los instrumentos se observen completos,
+                    separados y con buena iluminación.
                 </div>
                 """
             )
 
             imagen_entrada = gr.Image(
                 type="pil",
-                sources=[
-                    "upload",
-                    "webcam",
-                    "clipboard"
-                ],
-                label="Vista previa de la imagen"
+                sources=["upload", "webcam", "clipboard"],
+                label="Fotografía del instrumental"
             )
 
-            with gr.Accordion(
-                "Configuración de predicción",
-                open=False
-            ):
-
-                confianza = gr.Slider(
-                    minimum=0.10,
-                    maximum=0.80,
-                    value=0.25,
-                    step=0.05,
-                    label="Confianza mínima"
-                )
-
-                iou = gr.Slider(
-                    minimum=0.20,
-                    maximum=0.80,
-                    value=0.35,
-                    step=0.05,
-                    label="Umbral IoU"
-                )
-
-                resolucion = gr.Dropdown(
-                    choices=[
-                        640,
-                        768,
-                        960,
-                        1280
-                    ],
-                    value=960,
-                    label="Resolución de análisis"
-                )
-
             with gr.Row():
-
                 boton_analizar = gr.Button(
-                    "Analizar imagen",
+                    "Identificar instrumentos",
                     variant="primary",
                     elem_id="analyze-button"
                 )
 
                 boton_limpiar = gr.Button(
-                    "Limpiar",
+                    "Nuevo análisis",
                     elem_id="clear-button"
                 )
 
             gr.HTML(
                 """
                 <div class="recommendation">
-
-                    <b>Recomendación:</b>
-                    utiliza imágenes claras, instrumentos
-                    completos y evita superposiciones excesivas.
-                    Para comenzar usa confianza 0.25,
-                    IoU 0.35 y resolución 960.
-
+                    <b>Para obtener mejores resultados:</b><br>
+                    • coloque los instrumentos sobre una superficie uniforme;<br>
+                    • evite reflejos, sombras fuertes y superposiciones;<br>
+                    • mantenga todos los instrumentos dentro de la fotografía.
                 </div>
                 """
             )
 
-        # ==================================================
-        # COLUMNA DERECHA
-        # ==================================================
-
-        with gr.Column(
-            scale=7,
-            elem_classes=["panel"]
-        ):
-
+        with gr.Column(scale=7, elem_classes=["panel"]):
             gr.HTML(
                 """
-                <div class="step">
-                    PASO 2
-                </div>
-
-                <div class="section-title">
-                    Resultado del análisis
-                </div>
-
+                <div class="step">PASO 2</div>
+                <div class="section-title">Revisar el resultado</div>
                 <div class="section-description">
-                    Cada caja corresponde a un instrumento
-                    localizado por el modelo.
+                    La aplicación marcará cada instrumento identificado y mostrará
+                    su nombre, cantidad y nivel de reconocimiento.
                 </div>
                 """
             )
 
             imagen_resultado = gr.Image(
-                label="Detecciones",
+                label="Instrumentos identificados",
                 interactive=False
             )
 
-            resumen_resultado = gr.HTML(
-                estado_inicial()
-            )
+            resumen_resultado = gr.HTML(estado_inicial())
 
             tabla_resultados = gr.Dataframe(
                 headers=COLUMNAS,
-
-                datatype=[
-                    "number",
-                    "str",
-                    "str",
-                    "number",
-                    "number",
-                    "number",
-                    "number"
-                ],
-
-                label="Resultados por instrumento",
+                datatype=["number", "str", "str"],
+                label="Resumen de instrumentos",
                 interactive=False,
                 wrap=True
             )
 
-    with gr.Accordion(
-        "Información técnica del análisis",
-        open=False
-    ):
-
-        informacion_tecnica = gr.Textbox(
+    with gr.Accordion("Orientación para revisar el resultado", open=False):
+        informacion = gr.Textbox(
+            value=(
+                "Los resultados deben compararse con la fotografía original. "
+                "Antes de registrar, organizar o preparar el instrumental, "
+                "confirme visualmente el nombre y la cantidad."
+            ),
             show_label=False,
             interactive=False,
-            lines=4
+            lines=3
         )
 
     gr.HTML(
         """
         <div class="warning">
-
-            <b>Aviso:</b>
-            SurgiVision AI es una prueba de concepto académica.
-            No constituye un dispositivo médico, no reemplaza
-            la comprobación manual protocolizada y no debe
-            emplearse para decisiones clínicas.
-
+            <b>Importante:</b> SurgiVision AI es una herramienta de apoyo para
+            la identificación y el conteo de instrumentos quirúrgicos.
+            El personal responsable debe verificar visualmente los resultados.
+            La aplicación no sustituye los protocolos institucionales de control,
+            registro y seguridad.
         </div>
         """
     )
 
     boton_analizar.click(
         fn=analizar_imagen,
-
-        inputs=[
-            imagen_entrada,
-            confianza,
-            iou,
-            resolucion
-        ],
-
+        inputs=[imagen_entrada],
         outputs=[
             imagen_resultado,
             resumen_resultado,
             tabla_resultados,
-            informacion_tecnica
+            informacion
         ]
     )
 
     boton_limpiar.click(
         fn=limpiar,
         inputs=[],
-
         outputs=[
             imagen_entrada,
             imagen_resultado,
             resumen_resultado,
             tabla_resultados,
-            informacion_tecnica
+            informacion
         ]
     )
 
 
 # ==========================================================
-# EJECUTAR LA PÁGINA
+# EJECUCIÓN EN RENDER
 # ==========================================================
 
 if __name__ == "__main__":
-    # Limita la concurrencia para evitar varias inferencias simultáneas.
     pagina.queue(default_concurrency_limit=1, max_size=10)
 
     pagina.launch(
